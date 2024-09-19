@@ -26,7 +26,7 @@ def run_download_script():
     # URLs for the ArcGIS REST services
     urls = {
         'Wastewater': "https://geogimstest.houstontx.gov/arcgis/rest/services/HW/PublicOutsideWastewater/MapServer",
-        'Watertest': "https://geogimstest.houstontx.gov/arcgis/rest/services/PublicOutsideWatertest/MapServer",
+        'Water': "https://geogimstest.houstontx.gov/arcgis/rest/services/PublicOutsideWatertest/MapServer",
         'Stormdrain': "https://geogimstest.houstontx.gov/arcgis/rest/services/HW/Stormdrain/MapServer"
     }
 
@@ -53,6 +53,10 @@ def run_download_script():
 
     # Function to download data from a specific layer or sublayer and save it as GeoJSON
     def download_layer_data(base_url, layer_id, full_layer_name, folder_name):
+        if "labels" in full_layer_name.lower():
+            print(f"Skipping download for {full_layer_name} as it contains 'labels'.")
+            return
+    
         url = f"{base_url}/{layer_id}/query"
         params = {
             'where': '1=1',  # Get all data
