@@ -12,3 +12,9 @@ body,
   left: 0;
   top: 0;
 }
+
+#options{
+  position: fixed;
+  bottom: 4.5em;
+  left: 0.5em;
+}

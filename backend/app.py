@@ -6,7 +6,7 @@ from flask_cors import CORS
 app = Flask(__name__)
 
 # Enable CORS for all routes, allowing requests from 'localhost:5173'
-CORS(app, resources={r"/*": {"origins": "http://localhost:5174"}})
+CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
 
 # Path to the folder where GeoJSON data will be stored
 GEOJSON_DIR = os.path.join(os.getcwd(), 'downloaded')
@@ -51,12 +51,8 @@ def run_download_script():
             print(f"Failed to get layers from {base_url}: {e}")
             return []
 
-    # Function to download data from a specific layer or sublayer and save it as GeoJSON
+   # Function to download data from a specific layer or sublayer and save it as GeoJSON
     def download_layer_data(base_url, layer_id, full_layer_name, folder_name):
-        if "labels" in full_layer_name.lower():
-            print(f"Skipping download for {full_layer_name} as it contains 'labels'.")
-            return
-    
         url = f"{base_url}/{layer_id}/query"
         params = {
             'where': '1=1',  # Get all data
@@ -69,6 +65,15 @@ def run_download_script():
             response = requests.get(url, params=params)
             response.raise_for_status()
             data = response.json()
+
+            # Check if the response contains an error and skip saving the file in that case
+            if 'error' in data:
+                print(f"Error in response for {full_layer_name} (Layer ID: {layer_id}): {data['error']}")
+                return  # Skip saving if there's an error in the response
+            
+            if 'Label' in full_layer_name:
+                print(f"Label layer found {full_layer_name} (Layer ID: {layer_id}): {data['error']}")
+                return  # Skip saving if there's an error in the response
 
             # Create a clean filename for the layer with numbers
             file_name = f"{folder_name}/{full_layer_name.replace(' ', '_')}.geojson"

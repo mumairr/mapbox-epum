@@ -7,7 +7,7 @@
     border-radius: 5px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     max-height: 90vh;
-    width: fit-content;
+    overflow-y:scroll;
   }
   
   .layer-control .ant-checkbox-wrapper {
