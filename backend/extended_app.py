@@ -9,7 +9,7 @@ app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
 
 # Path to the folder where GeoJSON data will be stored
-GEOJSON_DIR = os.path.join(os.getcwd(), 'downloadedall')
+GEOJSON_DIR = os.path.join(os.getcwd(), 'downloaded')
 
 # Create the folder if it doesn't exist
 if not os.path.exists(GEOJSON_DIR):
