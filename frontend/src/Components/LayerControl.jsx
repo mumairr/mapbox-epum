@@ -5,6 +5,10 @@ import { ZoomInOutlined } from "@ant-design/icons";
 import "./LayerControl.css";
 import LegendControl from "./LegendControl";
 
+//store geom types for dynamic legend building
+let geomType;
+
+// Define the layer styles for different geometry types (I only did 2 layers and pretty basi crough styles)
 let layerStyles = {
   "Stormdrain/1_Stormdrain_Network_Structures": {
     "circle-radius": 5,
@@ -33,19 +37,19 @@ let layerStyles = {
       "#ccc",
     ],
   },
-  defaultPoint: {
+  Point: {
     "circle-radius": 5,
     "circle-stroke-width": 2,
     "circle-stroke-color": "#000",
     "circle-color": "#FF5722",
     "circle-opacity": 1,
   },
-  defaultLine: {
+  Line: {
     "fill-color": "#4CAF50",
     "fill-opacity": 0.5,
     "fill-opacity-transition": { duration: 500 },
   },
-  defaultPolygon: {
+  Polygon: {
     "fill-color": "#4CAF50",
     "fill-opacity": 0.5,
     "fill-opacity-transition": { duration: 500 },
@@ -64,13 +68,16 @@ const LayerControl = ({ mapInstance }) => {
   const [loadedLayers, setLoadedLayers] = useState([]); // Track layers already loaded
 
   useEffect(async () => {
+    //on load, get the folder structure and set the layers
     const folderStructure = await getFolderStructure();
     setLayers(await getLayersName(folderStructure));
   }, []);
 
+  // Fetch the folder structure from the backend
   async function getFolderStructure() {
     const response = await fetch(`${backendUrl}/folder-structure`);
     const structure = response.json();
+
     return structure;
   }
 
@@ -108,7 +115,8 @@ const LayerControl = ({ mapInstance }) => {
         });
 
         const geometryType = geojsonData.features[0]?.geometry?.type;
-
+        geomType = geojsonData.features[0]?.geometry?.type;
+        // Add the layer to the map based on the geometry type
         if (geometryType === "Point") {
           if (layerId == "Stormdrain/1_Stormdrain_Network_Structures") {
             map.addLayer({
@@ -122,7 +130,7 @@ const LayerControl = ({ mapInstance }) => {
               id: layerId,
               type: "circle",
               source: layerId,
-              paint: layerStyles["defaultPoint"],
+              paint: layerStyles["Point"],
             });
           }
         } else if (geometryType === "LineString") {
@@ -130,7 +138,7 @@ const LayerControl = ({ mapInstance }) => {
             id: layerId,
             type: "line",
             source: layerId,
-            paint: layerStyles["defaultLine"],
+            paint: layerStyles["Line"],
           });
         } else if (geometryType === "Polygon") {
           if (layerId == "Stormdrain/1_SWM_BProjects_-_Type") {
@@ -145,7 +153,7 @@ const LayerControl = ({ mapInstance }) => {
               id: layerId,
               type: "fill",
               source: layerId,
-              paint: layerStyles["defaultPolygon"],
+              paint: layerStyles["Polygon"],
             });
         }
 
@@ -187,6 +195,7 @@ const LayerControl = ({ mapInstance }) => {
     }
   }
 
+  // Zoom to a feature on the map
   const zoomToFeature = (coordinates) => {
     const bounds = new mapboxgl.LngLatBounds();
     bounds.extend(coordinates);
@@ -198,7 +207,9 @@ const LayerControl = ({ mapInstance }) => {
     const layers = folderStructure
       .filter((item) => item.endsWith(".geojson"))
       .map((item) => {
-        const layerName = item.replace(".geojson", "").split("\\").pop();
+        const layerName = item
+          .replace(".geojson", "")
+          .replace("/app/downloaded/", "");
         return {
           id: layerName,
           type: "line",
@@ -416,7 +427,13 @@ const LayerControl = ({ mapInstance }) => {
       </div>
 
       {/* Add the LegendControl here */}
-      <LegendControl checkedLayers={checkedKeys} layerStyles={layerStyles} />
+      {checkedKeys.length > 0 ? (
+        <LegendControl
+          checkedLayers={checkedKeys}
+          layerStyles={layerStyles}
+          geomType={geomType}
+        />
+      ) : null}
     </>
   );
 };

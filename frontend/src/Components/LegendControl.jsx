@@ -1,16 +1,22 @@
 import React, { useEffect, useState } from "react";
 import "./LegendControl.css";
 
-const LegendControl = ({ checkedLayers, layerStyles }) => {
+const LegendControl = ({ checkedLayers, layerStyles, geomType }) => {
   const [legendItems, setLegendItems] = useState([]);
 
   // Update legend items based on the checked layers
   useEffect(() => {
     const items = checkedLayers
       .map((layerId) => {
-        console.log(layerId);
-        
-        const style = layerStyles[layerId];
+        let style;
+        // Special case for styled layers
+        if (
+          layerId == "Stormdrain/1_Stormdrain_Network_Structures" ||
+          layerId == "Stormdrain/1_SWM_BProjects_-_Type"
+        )
+          style = layerStyles[layerId];
+        else style = layerStyles[geomType];
+
         if (style) {
           return {
             id: layerId,
@@ -37,7 +43,7 @@ const LegendControl = ({ checkedLayers, layerStyles }) => {
               {item.legends.map((legend, idx) => (
                 <li key={idx} className="legend-entry">
                   <span className="legend-symbol" style={legend.style}></span>
-                  <span>{legend.label.split(':').pop()}</span>
+                  <span>{legend.label.split(":").pop()}</span>
                 </li>
               ))}
             </ul>
