@@ -6,7 +6,7 @@ from flask_cors import CORS
 app = Flask(__name__)
 
 # Enable CORS for all routes, allowing requests from 'localhost:5173'
-CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
+CORS(app, resources={r"/*": {"origins": "http://localhost"}})
 
 # Path to the folder where GeoJSON data will be stored
 GEOJSON_DIR = os.path.join(os.getcwd(), 'downloadedall')
