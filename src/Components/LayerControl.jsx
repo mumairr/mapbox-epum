@@ -84,8 +84,9 @@ const LayerControl = ({ mapInstance }) => {
 
   // Create a single popup and reuse it
   const popup = new mapboxgl.Popup({
-    closeButton: false,
+    closeButton: true,
     closeOnClick: false,
+    closeOnMove: true,
   });
 
   // Fetch and add layers when selected
@@ -97,7 +98,7 @@ const LayerControl = ({ mapInstance }) => {
       if (response.status === 200) {
         const geojsonData = await response.json();
         if (geojsonData.features.length === 0) {
-          info(`${cleanName(layerId).split(" ").pop()} layer has no features.`);
+          info(`${cleanName(layerId)} layer has no features.`);
           return;
         }
 
@@ -161,16 +162,22 @@ const LayerControl = ({ mapInstance }) => {
               popupContent += `<tr><td><strong>${key}</strong></td><td>${value}</td></tr>`;
             }
             popupContent += `</table>`;
+            popupContent += `<button id="zoomButton">Zoom to Feature</button>`;
 
             // Set the popup with dynamic content
             popup.setLngLat(e.lngLat).setHTML(popupContent).addTo(map);
+
+            // Handle zoom button click inside the popup
+            document.getElementById("zoomButton").onclick = () => {
+              zoomToFeature(feature.geometry.coordinates);
+            };
           }
         });
 
         // When the mouse leaves the feature, reset the cursor
         map.on("mouseleave", layerId, () => {
           map.getCanvas().style.cursor = ""; // Revert cursor back to default
-          popup.remove(); // Remove the popup
+          // popup.remove(); // Remove the popup
         });
 
         setLoadedLayers((prevLoadedLayers) => [...prevLoadedLayers, layerId]);
@@ -179,6 +186,12 @@ const LayerControl = ({ mapInstance }) => {
       }
     }
   }
+
+  const zoomToFeature = (coordinates) => {
+    const bounds = new mapboxgl.LngLatBounds();
+    bounds.extend(coordinates);
+    mapInstance.fitBounds(bounds, { padding: 20 });
+  };
 
   // Get layer names and structure
   const getLayersName = async (folderStructure) => {
@@ -205,7 +218,6 @@ const LayerControl = ({ mapInstance }) => {
     // If the source isn't loaded yet, fetch and add the layer
     if (!source) {
       await fetchAndAddLayer(mapInstance, layerId);
-
       source = mapInstance.getSource(layerId); // Re-check after loading the layer
     }
 
@@ -217,8 +229,28 @@ const LayerControl = ({ mapInstance }) => {
 
       // Compute bounds for all features in the GeoJSON data
       data.features.forEach((feature) => {
+        const geometryType = feature.geometry.type;
         const coordinates = feature.geometry.coordinates;
-        bounds.extend(coordinates);
+
+        if (geometryType === "Point") {
+          // For Point, extend bounds directly with coordinates
+          bounds.extend(coordinates);
+        } else if (geometryType === "LineString") {
+          // For LineString, loop through all coordinates
+          coordinates.forEach((coord) => bounds.extend(coord));
+        } else if (geometryType === "Polygon") {
+          // For Polygon, loop through all rings (first is outer boundary, others are holes)
+          coordinates.forEach((ring) => {
+            ring.forEach((coord) => bounds.extend(coord)); // Loop through each vertex in the ring
+          });
+        } else if (geometryType === "MultiPolygon") {
+          // For MultiPolygon, loop through each polygon and its rings
+          coordinates.forEach((polygon) => {
+            polygon.forEach((ring) => {
+              ring.forEach((coord) => bounds.extend(coord)); // Loop through each vertex in each ring
+            });
+          });
+        }
       });
 
       // Zoom to the calculated layer bounds
