@@ -9,7 +9,7 @@ app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
 
 # Path to the folder where GeoJSON data will be stored
-GEOJSON_DIR = os.path.join(os.getcwd(), 'downloaded')
+GEOJSON_DIR = os.path.join(os.getcwd(), 'downloadedall')
 
 # Create the folder if it doesn't exist
 if not os.path.exists(GEOJSON_DIR):
@@ -59,37 +59,57 @@ def run_download_script():
         if os.path.exists(file_name):
             print(f"Layer {full_layer_name} already exists. Skipping download.")
             return  # Skip the download if the file already exists
+
         url = f"{base_url}/{layer_id}/query"
         params = {
             'where': '1=1',  # Get all data
             'outFields': '*',  # Get all fields
             'f': 'geojson',  # Get the data in GeoJSON format for GIS compatibility
-            'returnGeometry': 'true',  # Get the geometry data as well for GIS apps
+            'returnGeometry': 'true',  # Get the geometry data as well
+            'resultOffset': 0,  # Start with the first record
+            'resultRecordCount': 1000  # Number of records per request (adjust as needed)
         }
 
+        all_features = []  # Store all features across paginated requests
+
         try:
-            response = requests.get(url, params=params)
-            response.raise_for_status()
-            data = response.json()
+            while True:
+                response = requests.get(url, params=params)
+                response.raise_for_status()
+                data = response.json()
 
-            # Check if the response contains an error and skip saving the file in that case
-            if 'error' in data:
-                print(f"Error in response for {full_layer_name} (Layer ID: {layer_id}): {data['error']}")
-                return  # Skip saving if there's an error in the response
-            
-            if 'Label' in full_layer_name:
-                print(f"Label layer found {full_layer_name} (Layer ID: {layer_id}): {data['error']}")
-                return  # Skip saving if there's an error in the response
+                # Check if the response contains an error or exceeded the transfer limit
+                if 'error' in data:
+                    print(f"Error in response for {full_layer_name} (Layer ID: {layer_id}): {data['error']}")
+                    return  # Skip saving if there's an error in the response
 
-            # Create a clean filename for the layer with numbers
-            file_name = f"{folder_name}/{full_layer_name.replace(' ', '_')}.geojson"
-            with open(file_name, 'w') as file:
-                json.dump(data, file, indent=4)
+                # Check if there are features in the response
+                if 'features' in data:
+                    all_features.extend(data['features'])
 
-            # Add file structure to the list
-            folder_structure.append(f"{folder_name}/{full_layer_name.replace(' ', '_')}.geojson")
+                    # If we get fewer records than the requested limit, we have reached the end
+                    if len(data['features']) < params['resultRecordCount']:
+                        break
 
-            print(f"Data for {full_layer_name} (Layer ID: {layer_id}) downloaded successfully in {folder_name}!")
+                    # Otherwise, increase the resultOffset for the next request
+                    params['resultOffset'] += params['resultRecordCount']
+                else:
+                    break
+
+            # Save the full result to a GeoJSON file after paginating through all records
+            if all_features:
+                geojson_data = {
+                    "type": "FeatureCollection",
+                    "features": all_features
+                }
+                file_name = f"{folder_name}/{full_layer_name.replace(' ', '_')}.geojson"
+                with open(file_name, 'w') as file:
+                    json.dump(geojson_data, file, indent=4)
+
+                # Add file structure to the list
+                folder_structure.append(f"{folder_name}/{full_layer_name.replace(' ', '_')}.geojson")
+
+                print(f"Data for {full_layer_name} (Layer ID: {layer_id}) downloaded successfully in {folder_name}!")
         except Exception as e:
             print(f"Failed to download data for {full_layer_name} (Layer ID: {layer_id}) in {folder_name}: {e}")
 
@@ -147,12 +167,12 @@ def run_download_script():
 @app.route('/geojson/<path:filename>')
 def serve_geojson(filename):
     """Serve GeoJSON files."""
-    return send_from_directory(GEOJSON_DIR, filename)
+    return send_from_directory(os.path.join(os.getcwd(), 'downloadedexceed'), filename)
 
 @app.route('/folder-structure')
 def folder_structure():
     """Return the folder structure as JSON."""
-    folder_structure_file = os.path.join(GEOJSON_DIR, 'folder_structure.txt')
+    folder_structure_file = os.path.join(os.path.join(os.getcwd(), 'downloadedexceed'), 'folder_structure.txt')
     with open(folder_structure_file, 'r') as f:
         structure = f.read().splitlines()
     return jsonify(structure)

@@ -15,6 +15,6 @@ body,
 
 #options{
   position: fixed;
-  bottom: 4.5em;
-  left: 0.5em;
+  bottom: 1.5em;
+  right: 0.5em;
 }

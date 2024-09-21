@@ -5,7 +5,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import "@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css";
 import "./map.css";
 import LayerControl from "./LayerControl";
-import { Card, Space, Switch } from "antd";
+import { Card, Radio, Space, Switch } from "antd";
 import { CheckOutlined, CloseOutlined } from "@ant-design/icons";
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
@@ -14,44 +14,69 @@ const secondsPerRevolution = 120;
 const maxSpinZoom = 5;
 const slowSpinZoom = 3;
 let userInteracting = false;
-let map2D;
 function Map() {
   const [mapInstance, setMapInstance] = useState(null);
   const map2DContainerRef = useRef(null);
   const [layers, setLayers] = useState([]);
   const [spinEnabled, setSpinEnabled] = useState(true);
+  const [selectedBase, setSelectedBase] = useState("satellite-streets-v12"); // Default base layer
+
+  const baseLayers = [
+    {
+      id: "satellite-streets-v12",
+      title: "Satellite Streets",
+      style: "mapbox://styles/mapbox/satellite-streets-v12",
+      visibility: "none",
+      type: "base",
+    },
+    {
+      id: "dark-v11",
+      title: "Dark",
+      style: "mapbox://styles/mapbox/dark-v11",
+      visibility: "none",
+      type: "base",
+    },
+    // {
+    //   id: "streets-v12",
+    //   title: "Streets",
+    //   style: "mapbox://styles/mapbox/streets-v12",
+    //   visibility: "none",
+    //   type: "base",
+    // },
+    {
+      id: "light-v11",
+      title: "Light",
+      style: "mapbox://styles/mapbox/light-v11",
+      visibility: "none",
+      type: "base",
+    },
+    // {
+    //   id: "outdoors-v12",
+    //   title: "Outdoors",
+    //   style: "mapbox://styles/mapbox/outdoors-v12",
+    //   visibility: "none",
+    //   type: "base",
+    // },
+  ];
 
   useEffect(() => {
-    // map2D = new mapboxgl.Map({
-    //   container: map2DContainerRef.current,
-    //   style: "mapbox://styles/mapbox/streets-v12",
-    //   center: [-95.3701, 29.7601],
-    //   zoom: 2,
-    //   projection: "globe", // Enable globe mode
-    // });
-
-    map2D = new mapboxgl.Map({
-      container: "map",
+    const map2D = new mapboxgl.Map({
       zoom: 2,
       center: [-95.3701, 29.7601],
-      // pitch: 80,
-      // bearing: 41,
+      container: "map",
       style: "mapbox://styles/mapbox/satellite-streets-v12",
+      projection: "globe",
     });
 
     map2D.on("style.load", () => {
-      map2D.addSource("mapbox-dem", {
-        type: "raster-dem",
-        url: "mapbox://mapbox.mapbox-terrain-dem-v1",
-        tileSize: 512,
-        maxzoom: 14,
-      });
-      map2D.setTerrain({
-        source: "mapbox-dem",
-        exaggeration: 1.5,
+      map2D.setFog({
+        color: "rgb(186, 210, 235)", // Lower atmosphere
+        "high-color": "rgb(36, 92, 223)", // Upper atmosphere
+        "horizon-blend": 0.02, // Atmosphere thickness (default 0.2 at low zooms)
+        "space-color": "rgb(11, 11, 25)", // Background color
+        "star-intensity": 0.25, // Background star brightness (default 0.35 at low zoooms )
       });
     });
-
     const coordinatesGeocoder = (query) => {
       // Match anything which looks like
       // decimal degrees coordinate pair.
@@ -133,6 +158,41 @@ function Map() {
     };
   }, []);
 
+  const onChange = (layer) => {
+    const layerId = layer.target.id;
+
+    const currentLayers = mapInstance
+      .getStyle()
+      .layers.filter(
+        (layer) =>
+          layer.id.match(/Storm.*/) ||
+          layer.id.match(/Water.*/) ||
+          layer.id.match(/Waste.*/)
+      );
+    const currentSources = mapInstance.getStyle().sources;
+    const newStyle = "mapbox://styles/mapbox/" + layerId;
+
+    mapInstance.setStyle(newStyle);
+
+    // Wait for the new style to finish loading
+    mapInstance.once("styledata", () => {
+      // Re-add sources (custom ones, not those part of the base map)
+      for (const [sourceId, source] of Object.entries(currentSources)) {
+        if (!mapInstance.getSource(sourceId)) {
+          mapInstance.addSource(sourceId, source);
+        }
+      }
+      // Re-add layers (custom ones, not background/base layers)
+      currentLayers.forEach((layer) => {
+        if (!mapInstance.getLayer(layer.id)) {
+          mapInstance.addLayer(layer);
+        }
+      });
+    });
+
+    setSelectedBase(layer.target.value);
+  };
+
   // useEffect to handle enabling/disabling globe spinning based on spinEnabled
   useEffect(() => {
     if (mapInstance) {
@@ -172,8 +232,8 @@ function Map() {
         <LayerControl mapInstance={mapInstance} layers={layers} />
       )}
       <div id="options">
-        <Card title="Options" bordered={true}>
-          <Space>
+        <Card bordered={true}>
+          <Space direction="vertical">
             Spin Globe
             <Switch
               checkedChildren={<CheckOutlined />}
@@ -181,6 +241,17 @@ function Map() {
               defaultChecked
               onChange={(checked) => setSpinEnabled(checked)} // Handle spin toggle
             />
+            Base Layers
+            <Radio.Group onChange={onChange} value={selectedBase}>
+              <Space direction="vertical">
+                {baseLayers.map((layer) => (
+                  // Base layers
+                  <Radio key={layer.id} id={layer.id} value={layer.id}>
+                    {layer.title}
+                  </Radio>
+                ))}
+              </Space>
+            </Radio.Group>
           </Space>
         </Card>
       </div>

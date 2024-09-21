@@ -7,7 +7,6 @@
     border-radius: 5px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     max-height: 90vh;
-    overflow-y:scroll;
   }
   
   .layer-control .ant-checkbox-wrapper {
@@ -16,4 +15,8 @@
   
   .layer-control .ant-btn {
     margin-left: 8px;
+  }
+
+  .mapboxgl-popup-content{
+    width: fit-content !important
   }

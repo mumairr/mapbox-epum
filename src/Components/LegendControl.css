@@ -1,0 +1,32 @@
+.legend-control {
+  position: fixed;
+  bottom: 4em;
+  left: 0.5em;
+  background: white;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+.legend-symbol {
+  display: inline-block;
+  margin-right: 10px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.legend-label {
+  font-size: 14px;
+}
+
+.legend-control ul{
+  list-style-type: none;
+  padding: 0;
+}

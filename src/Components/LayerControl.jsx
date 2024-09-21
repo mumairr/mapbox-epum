@@ -1,10 +1,78 @@
-import React, { useState } from "react";
-import { Tree } from "antd";
+import React, { useState, useEffect } from "react";
+import mapboxgl from "mapbox-gl";
+import { Tree, Button, message } from "antd";
+import { ZoomInOutlined } from "@ant-design/icons";
 import "./LayerControl.css";
+import LegendControl from "./LegendControl";
 
-const LayerControl = ({ mapInstance, layers }) => {
+let layerStyles = {
+  "Stormdrain/1_Stormdrain_Network_Structures": {
+    "circle-radius": 5,
+    "circle-color": [
+      "match",
+      ["get", "STRUCTTYPE"],
+      "Pump Station",
+      "#A8A800",
+      "Detention Pond",
+      "#6F4588",
+      "Virtual Junction",
+      "#CE2B30",
+      "#ccc",
+    ],
+  },
+  "Stormdrain/1_SWM_BProjects_-_Type": {
+    "fill-color": [
+      "match",
+      ["get", "PROJECTTYPE"],
+      "LDP",
+      "#99E600",
+      "DRE",
+      "#004DA8",
+      "hLDP",
+      "#CA2B27",
+      "#ccc",
+    ],
+  },
+  defaultPoint: {
+    "circle-radius": 5,
+    "circle-stroke-width": 2,
+    "circle-stroke-color": "#000",
+    "circle-color": "#FF5722",
+    "circle-opacity": 1,
+  },
+  defaultLine: {
+    "fill-color": "#4CAF50",
+    "fill-opacity": 0.5,
+    "fill-opacity-transition": { duration: 500 },
+  },
+  defaultPolygon: {
+    "fill-color": "#4CAF50",
+    "fill-opacity": 0.5,
+    "fill-opacity-transition": { duration: 500 },
+  },
+};
+
+const LayerControl = ({ mapInstance }) => {
+  const [messageApi, contextHolder] = message.useMessage();
+  const info = (msg) => {
+    messageApi.info(msg);
+  };
   const [checkedKeys, setCheckedKeys] = useState([]); // Track which layers are checked
   const [expandedKeys, setExpandedKeys] = useState([]); // Track which nodes are expanded
+  const [layers, setLayers] = useState([]); // Track all the layers
+  const backendUrl = "http://localhost:5000"; // Local flask app needed
+  const [loadedLayers, setLoadedLayers] = useState([]); // Track layers already loaded
+
+  useEffect(async () => {
+    const folderStructure = await getFolderStructure();
+    setLayers(await getLayersName(folderStructure));
+  }, []);
+
+  async function getFolderStructure() {
+    const response = await fetch(`${backendUrl}/folder-structure`);
+    const structure = response.json();
+    return structure;
+  }
 
   // Utility function to clean and split names based on numeric prefixes
   const cleanName = (name) => name.replace(/^\d+_/, "").replace(/_/g, " ");
@@ -14,6 +82,161 @@ const LayerControl = ({ mapInstance, layers }) => {
     return id.split(/(?=\d_)/).map(cleanName); // Split by a number followed by an underscore (e.g., 2_, 3_, etc.)
   };
 
+  // Create a single popup and reuse it
+  const popup = new mapboxgl.Popup({
+    closeButton: false,
+    closeOnClick: false,
+  });
+
+  // Fetch and add layers when selected
+  async function fetchAndAddLayer(map, layerId) {
+    if (!map.getSource(layerId)) {
+      const geojsonUrl = `${backendUrl}/geojson/${layerId}.geojson`;
+      const response = await fetch(geojsonUrl);
+
+      if (response.status === 200) {
+        const geojsonData = await response.json();
+        if (geojsonData.features.length === 0) {
+          info(`${cleanName(layerId).split(" ").pop()} layer has no features.`);
+          return;
+        }
+
+        map.addSource(layerId, {
+          type: "geojson",
+          data: geojsonData,
+        });
+
+        const geometryType = geojsonData.features[0]?.geometry?.type;
+
+        if (geometryType === "Point") {
+          if (layerId == "Stormdrain/1_Stormdrain_Network_Structures") {
+            map.addLayer({
+              id: layerId,
+              type: "circle",
+              source: layerId,
+              paint: layerStyles["Stormdrain/1_Stormdrain_Network_Structures"],
+            });
+          } else {
+            map.addLayer({
+              id: layerId,
+              type: "circle",
+              source: layerId,
+              paint: layerStyles["defaultPoint"],
+            });
+          }
+        } else if (geometryType === "LineString") {
+          map.addLayer({
+            id: layerId,
+            type: "line",
+            source: layerId,
+            paint: layerStyles["defaultLine"],
+          });
+        } else if (geometryType === "Polygon") {
+          if (layerId == "Stormdrain/1_SWM_BProjects_-_Type") {
+            map.addLayer({
+              id: layerId,
+              type: "fill",
+              source: layerId,
+              paint: layerStyles["Stormdrain/1_SWM_BProjects_-_Type"],
+            });
+          } else
+            map.addLayer({
+              id: layerId,
+              type: "fill",
+              source: layerId,
+              paint: layerStyles["defaultPolygon"],
+            });
+        }
+
+        // Handle feature hover events for popups
+        map.on("mousemove", layerId, (e) => {
+          const feature = e.features[0];
+          if (e.features.length > 0) {
+            // Change cursor to pointer when over a feature
+            map.getCanvas().style.cursor = "pointer";
+
+            // Dynamically build a table with all feature properties
+            let popupContent = `<center><h2>Feature Information</h2></center><h4>Layer: ${layerId}</h4><table id="popupTable">`;
+            for (const [key, value] of Object.entries(feature.properties)) {
+              popupContent += `<tr><td><strong>${key}</strong></td><td>${value}</td></tr>`;
+            }
+            popupContent += `</table>`;
+
+            // Set the popup with dynamic content
+            popup.setLngLat(e.lngLat).setHTML(popupContent).addTo(map);
+          }
+        });
+
+        // When the mouse leaves the feature, reset the cursor
+        map.on("mouseleave", layerId, () => {
+          map.getCanvas().style.cursor = ""; // Revert cursor back to default
+          popup.remove(); // Remove the popup
+        });
+
+        setLoadedLayers((prevLoadedLayers) => [...prevLoadedLayers, layerId]);
+      } else {
+        console.log(`Failed to load layer: ${layerId}`);
+      }
+    }
+  }
+
+  // Get layer names and structure
+  const getLayersName = async (folderStructure) => {
+    const layers = folderStructure
+      .filter((item) => item.endsWith(".geojson"))
+      .map((item) => {
+        const layerName = item.replace(".geojson", "").split("\\").pop();
+        return {
+          id: layerName,
+          type: "line",
+          source: layerName,
+          layout: {
+            visibility: "none",
+          },
+        };
+      });
+    return layers;
+  };
+
+  // Zoom to layer extent, adding the layer if it's not already loaded
+  const zoomToLayer = async (layerId) => {
+    let source = mapInstance.getSource(layerId);
+
+    // If the source isn't loaded yet, fetch and add the layer
+    if (!source) {
+      await fetchAndAddLayer(mapInstance, layerId);
+
+      source = mapInstance.getSource(layerId); // Re-check after loading the layer
+    }
+
+    // If the layer is added successfully, proceed with zooming
+    if (source) {
+      const data = source._data;
+
+      const bounds = new mapboxgl.LngLatBounds();
+
+      // Compute bounds for all features in the GeoJSON data
+      data.features.forEach((feature) => {
+        const coordinates = feature.geometry.coordinates;
+        bounds.extend(coordinates);
+      });
+
+      // Zoom to the calculated layer bounds
+      mapInstance.fitBounds(bounds, { padding: 20 });
+
+      // Mark the layer as checked in the control
+      setCheckedKeys((prevCheckedKeys) => {
+        // Ensure the layerId is included in the checkedKeys state
+        if (!prevCheckedKeys.includes(layerId)) {
+          return [...prevCheckedKeys, layerId];
+        }
+        return prevCheckedKeys;
+      });
+    } else {
+      console.error(`Failed to load and add the layer ${layerId}.`);
+    }
+  };
+
   // Toggle the visibility of a layer on the mapInstance
   const toggleLayerVisibility = (layerId, isVisible) => {
     const visibility = isVisible ? "visible" : "none";
@@ -21,18 +244,25 @@ const LayerControl = ({ mapInstance, layers }) => {
     if (mapLayer) {
       mapInstance.setLayoutProperty(layerId, "visibility", visibility);
     } else {
-      console.log(`Layer ${layerId} not found in the map.`);
+      // console.log(`Layer ${layerId} not found in the map.`);
     }
   };
 
   // Handle checking/unchecking layers
-  const onCheck = (checkedKeysValue) => {
+  const onCheck = async (checkedKeysValue) => {
     setCheckedKeys(checkedKeysValue);
 
-    layers.forEach((layer) => {
+    for (const layer of layers) {
       const isVisible = checkedKeysValue.includes(layer.id);
+
+      // Lazy load the layer only when it’s checked and hasn’t been loaded before
+      if (isVisible && !loadedLayers.includes(layer.id)) {
+        await fetchAndAddLayer(mapInstance, layer.id);
+      }
+
+      // Toggle visibility
       toggleLayerVisibility(layer.id, isVisible);
-    });
+    }
   };
 
   // Handle expand/collapse of nodes
@@ -40,7 +270,7 @@ const LayerControl = ({ mapInstance, layers }) => {
     setExpandedKeys(expandedKeysValue);
   };
 
-  // Recursive function to build the tree structure
+  // Recursive function to build the tree structure with zoom button
   const buildTreeData = (groupedLayers) => {
     const treeData = [];
 
@@ -51,17 +281,27 @@ const LayerControl = ({ mapInstance, layers }) => {
         children: [],
       };
 
-      // If there are layers, add them as leaf nodes
+      // If there are layers, add them as leaf nodes with zoom button
       if (groupedLayers[category].layers) {
         groupedLayers[category].layers.forEach((layer) => {
-          const layerParts = splitLayerId(layer.id).slice(1); // Skip the first part (category)
+          const layerParts = splitLayerId(layer.id).slice(1);
 
           // Recursively nest subcategories if needed
           let currentNode = categoryNode;
           layerParts.forEach((part, index) => {
             if (index === layerParts.length - 1) {
               currentNode.children.push({
-                title: part, // Last part is the leaf (layer)
+                title: (
+                  <>
+                    {part}
+                    <Button
+                      icon={<ZoomInOutlined />}
+                      size="small"
+                      style={{ marginLeft: 10 }}
+                      onClick={() => zoomToLayer(layer.id)} // Call zoom function on click
+                    />
+                  </>
+                ),
                 key: layer.id, // Use the full layer id as the unique key
                 isLeaf: true,
               });
@@ -126,19 +366,26 @@ const LayerControl = ({ mapInstance, layers }) => {
   const treeData = buildTreeData(groupedLayers);
 
   return (
-    <div className="layer-control" style={{ padding: "10px" }}>
-      <Tree
-        checkable 
-        showLine
-        expandedKeys={expandedKeys}
-        onExpand={onExpand}
-        onCheck={onCheck}
-        checkedKeys={checkedKeys}
-        treeData={treeData} // Use treeData directly in Ant Tree
-        defaultExpandAll={true} // Expand all nodes by default
-        style={{ background: "#f9f9f9", padding: "10px" }} // Apply background and padding
-      />
-    </div>
+    <>
+      {contextHolder}
+      <div className="layer-control" style={{ padding: "10px" }}>
+        <Tree
+          checkable
+          showLine
+          expandedKeys={expandedKeys}
+          onExpand={onExpand}
+          onCheck={onCheck}
+          checkedKeys={checkedKeys}
+          treeData={treeData} // Use treeData directly in Ant Tree
+          defaultExpandAll={true} // Expand all nodes by default
+          style={{ background: "#f9f9f9", padding: "10px" }} // Apply background and padding
+        />
+        {/* Add the LegendControl here */}
+      </div>
+
+      {/* Add the LegendControl here */}
+      <LegendControl checkedLayers={checkedKeys} layerStyles={layerStyles} />
+    </>
   );
 };
 
